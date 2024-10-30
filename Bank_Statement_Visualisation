@@ -1,0 +1,100 @@
+import sys
+import pandas as pd
+import numpy as np
+import plotly
+import plotly.graph_objects as go
+print('The Python version is {}\n'.format(sys.version))
+print('The pandas version is {}\n'.format(pd.__version__))
+print('The NumPy version is {}\n'.format(np.__version__))
+print('The Plotly version is {}\n'.format(plotly.__version__))
+
+# read in bank statement and get general info
+df = pd.read_csv('mock_bank_statement.txt')
+print(df.info())
+print(df.head())
+
+# drop unwanted columns
+df.drop['column_name']
+
+# convert date to datetime object and print date period for statement
+df['Date'] = pd.to_datetime(df['Date'])
+print(df['Date'].min(), df['Date'].max())  
+
+# replace NaN values with zero in credit/debit column
+df['Credit'].replace(np.nan, 0)
+df['Debit'].replace(np.nan, 0)
+
+# create new column with transaction value and description
+df['Description_amount'] = df['Transaction'].astype(str).str.cat(df['Description'], sep=': ')
+
+# combine transactions on same dates and create new dataframe
+# concatenate values in Description_amount, separated by line break <br>
+# calculate the sum of transactions for each date 
+transactions_date_group = df.groupby('Date').agg({'Description_amount': '<br>'.join, 'Transaction':'Sum'})   # agg function allows functions to be applied acrtoss whole dataframes or rows/columns
+
+# need closing balance in order to calculate the starting balance from transactions
+closing_balance = input('Enter closing balance: £ ')
+starting_balance = closing_balance - transactions_date_group['Transaction'].sum()
+
+# add a column which calculates the current balance after each day
+transactions_date_group['Running balance'] = starting_balance + transactions_date_group['Transaction'].cumsum()
+
+# test to see calculations are correct by checking starting balance + transactions for the firt day is equal to our running balance calculated at the end of the first day
+# assert function raises an error if condition not met 
+first_date_index = transactions_date_group.index[0]
+check_1 = starting_balance + transactions_date_group.loc[first_date_index,
+                                                         'Transaction']
+check_2 = transactions_date_group.loc[first_date_index, 'Running balance']
+
+print(check_1)
+print(check_2)
+
+assert check_1 == check_2
+
+
+# Now we have a table showing our running balance and transaction history but there are some days with no transaction
+# To create a monthly average balance so we can track our balance over time, we need to give values for these missing days 
+
+# find the date range of the statement and create an index which can be assigned to a variable
+daily_index = pd.date_range(transactions_date_group.index(min, transactions_date_group.max()))
+
+# create a new dataframe with the running balance and the date as an index
+# insert NaN value for missing data
+df_daily = pd.DataFrame(transactions_date_group['Running balance'], index=daily_index, fill_value=np.nan)#
+
+# replace NaN value with value of previous day 
+
+for i in range(len(df_daily)):
+    
+    
+    if df_daily.iloc[i]['Running balance'] == 'NaN':
+        
+        df_daily.iloc[i] = df_daily.iloc[i-1]
+
+# alternatively you can forward fill missing values using 'ffill'
+# df_daily = df_daily.fillna(method='ffill')
+
+# create new datframe with monthly averages
+# DatetimeIndex lets us regroup transactions into monthly segments from which we can take an average 
+df_monthly = pd.DataFrame(df_daily['Running balance'].resample(rule='1M').mean())
+
+
+## making a plot 
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=transactions_date_group.index,
+                         y=transactions_date_group['Running balance'].round(0),
+                         mode='lines+markers',
+                         name='Daily balance',
+                         text=transactions_date_group['Description_amount'],
+                         hoverinfo='x+y+text',
+                         line_shape='hv'))
+
+fig.add_trace(go.Scatter(x=df_monthly.index,
+                         y=df_monthly['Running balance'].round(0),
+                         mode='lines+markers',
+                         name='Monthly mean balance'))
+
+fig.update_yaxes(hoverformat="$d")
+
+fig.show()
